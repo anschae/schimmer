@@ -145,7 +145,16 @@ linux: tests + `[.long]` 10-minute stability + pluginval (strictness 10) + rende
 collects `Schimmer-macOS.zip` / `Schimmer-Windows.zip`; on `v*` tags attaches them to a release.
 
 ## Known issues / open points
-- Not yet tested by a person in Cubase / Logic.
-- Quality: Eco = 8 tank lines and one diffusion stage less, Ultra = one diffusion stage more (all modes).
+- Not yet tested by a person in Cubase / Logic (only pluginval, auval, unit tests and renders).
+  Expect feedback on levels of individual presets and on UI details.
+- Quality: Eco = 8 tank lines and one diffusion stage less, Ultra = one diffusion stage more
+  (Hermite also in Dark's diffuser). Switching Quality or Mode clears the reverb tail (5 ms fade).
 - Chamber mode has lower modal density (allowed +1 dB more spectral ripple in the test), like
   ValhallaShimmer's Small mode.
+- In Freeze, the in-loop shimmer keeps shifting (the cascade rises and fades out); everything
+  else is lossless.
+- Size and Diffusion (below 25 %) glide the delay lengths: fast sweeps bend the pitch (intended).
+- No spectrogram of the tail in the UI (optional in the spec); the render tool makes spectrograms.
+- Later (spec section 6, architecture kept open): MIDI control (freeze/clear via note: add MIDI
+  input + map in `processBlock`), reverse reverb, LFOs/mod matrix (modulate `Settings` per block),
+  envelope follower, spectral freeze, band-limited ducking (DuckApplier idea from Prog Delay).
