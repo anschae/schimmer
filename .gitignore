@@ -1,0 +1,15 @@
+build/
+build-*/
+.deps/
+cmake-build-*/
+out/
+.vs/
+.vscode/
+.idea/
+.cache/
+.DS_Store
+*.user
+CMakeUserPresets.json
+compile_commands.json
+/renders/
+/snapshots/
