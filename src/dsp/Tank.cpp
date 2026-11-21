@@ -201,7 +201,7 @@ void Tank::setParams (const TankParams& p, int n) noexcept
         if (shActive[i] && ! wasActive) shMix[i].snap (0.0f);
         shMix[i].setTarget (shimTarget[i], n);
         shifter[i].setAntiAlias (voice[i].ratio);
-        shHp[i].setCutoff (sh.lowCutHz, fs);
+        shHp[i].setCutoff (std::max (30.0f, sh.lowCutHz), fs);   // never cascade into subsonics
         shLp[i].setCutoff (sh.highCutHz, fs);
         const float r = voice[i].ratio;
         const float shExtra = shimTarget[i] * (rev ? (1.0f + r) : std::abs (r - 1.0f)) * grainSec * 0.5f * fs;

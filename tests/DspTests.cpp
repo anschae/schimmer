@@ -376,3 +376,28 @@ TEST_CASE ("The decay display model matches the measured decay per band", "[dsp]
         CHECK (measured < predicted * 1.3);
     }
 }
+
+TEST_CASE ("Ducking lowers the wet signal while there is input", "[dsp][duck]")
+{
+    const int target = GENERATE (0, 1, 2);
+    auto s = wetSettings (2, 4.0f);
+    s.echo.on = true;
+    s.echo.feedback = 0.5f;
+    s.delayDirectDb = 0.0f;
+    s.duck.on = true;
+    s.duck.threshDb = -40.0f;
+    s.duck.depthDb = -24.0f;
+    s.duck.releaseMs = 100.0f;
+    s.duckTarget = (dsp::DuckTarget) target;
+    if (target == 1) s.delayDirectDb = -60.0f;   // wet = reverb only: all of it is ducked
+    auto in = signals::noiseBursts (kFs, 8.0, 3.0, 10.0, 0.3f);
+    const auto ducked = renderEngine (s, in, kFs).mono();
+    s.duck.on = false;
+    const auto plain = renderEngine (s, in, kFs).mono();
+    const size_t a = (size_t) (1.0 * kFs), b = (size_t) (2.9 * kFs), c = (size_t) (4.0 * kFs), d = (size_t) (5.0 * kFs);
+    const double during = energyDb (ducked, a, b) - energyDb (plain, a, b);
+    const double after = energyDb (ducked, c, d) - energyDb (plain, c, d);
+    INFO ("target " << target << ": while playing " << during << " dB, after release " << after << " dB");
+    CHECK (during < (target == 2 ? -1.0 : -6.0));   // delay only: the (unducked) reverb stays
+    CHECK (after > -3.0);
+}

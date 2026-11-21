@@ -72,7 +72,7 @@ inline Stereo sineBursts (double fs, double seconds, float amp = 0.3f)
 }
 
 /** Soft synthetic pad chord (detuned saws, low-passed), 4 s on, rest silence. */
-inline Stereo padChord (double fs, double seconds, double onSec = 4.0, float amp = 0.12f)
+inline Stereo padChord (double fs, double seconds, double onSec = 4.0, float amp = 0.07f)
 {
     Stereo s;
     s.resize ((size_t) (fs * seconds));

@@ -48,7 +48,11 @@ juce::Image spectrogram (const juce::AudioBuffer<float>& b, double fs, const juc
     const int order = 11, n = 1 << order;
     juce::dsp::FFT fft (order);
     std::vector<float> win ((size_t) n), buf ((size_t) n * 2);
-    for (int i = 0; i < n; ++i) win[(size_t) i] = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * i / (n - 1));
+    for (int i = 0; i < n; ++i)   // Blackman-Harris: low leakage, so bass lines don't smear
+    {
+        const float x = juce::MathConstants<float>::twoPi * (float) i / (float) (n - 1);
+        win[(size_t) i] = 0.35875f - 0.48829f * std::cos (x) + 0.14128f * std::cos (2 * x) - 0.01168f * std::cos (3 * x);
+    }
     const int len = b.getNumSamples();
     const double fMin = 30.0, fMax = fs * 0.5;
     for (int x = 0; x < W; ++x)
@@ -66,7 +70,7 @@ juce::Image spectrogram (const juce::AudioBuffer<float>& b, double fs, const juc
         {
             const double f = fMin * std::pow (fMax / fMin, 1.0 - (double) y / (H - 1));
             const int bin = juce::jlimit (1, n / 2 - 1, (int) std::lround (f / fs * n));
-            const float mag = buf[(size_t) bin] / (float) n * 4.0f;
+            const float mag = buf[(size_t) bin] / (float) n * 5.6f;
             const float db = 20.0f * std::log10 (std::max (mag, 1.0e-9f));
             img.setPixelAt (x, top + y, magma ((db + 120.0f) / 100.0f));
         }
