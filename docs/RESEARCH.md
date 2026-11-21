@@ -271,12 +271,16 @@ RT60 stays constant during a sweep.
 
 ## 12. Bloom
 
-Strymon's Bloom feeds a long diffusion/feedback section into the tank (S13). Decision: an 8-line
-"bloom network" (Hadamard FDN, 60–180 ms, its own T60 = 0–6 s from the Bloom control) between the
-input diffuser and the tank. The tank integrates the bloom network's slowly released energy, so
-the wet envelope rises over roughly the Bloom time and then follows the tank decay. Unlike an
-envelope follower this works for plucks as well as pads. The rise is predicted analytically
-(convolution of two exponential decays) for the Tail View.
+Strymon's Bloom feeds a long diffusion/feedback section into the tank (S13). A first version used one
+8-line FDN in front of the tank: the tank then integrates a decaying input, and the envelope of two
+cascaded exponential decays always peaks early (measured: ~0.5 s whatever the Bloom setting).
+Decision: **three cascaded 8-line feedback stages**, each energy-normalised (gain √(1−g²)), with a
+per-stage energy time constant τ = Bloom / 2.2. Their combined release is a gamma density
+t²·e^(−t/τ), which rises smoothly and peaks around the Bloom time; the tank integrates it with its
+own decay. Measured: Bloom 1/3/5 s → envelope peak at 1.5/3.0/5.2 s (test "Bloom swells the tail
+in ..."). The direct diffuser ("early") output is faded out as Bloom rises, so there is no initial
+blip before the swell. Unlike an envelope follower this works for plucks as well as pads. The Tail
+View draws the same model (numeric convolution of the gamma density with the tank decay).
 
 ## 13. Measurement methods (milestone checks)
 
@@ -314,3 +318,5 @@ wet sum ─► Ducking (target: all / reverb / delay; Post) ─► Clear-tail fa
 
 ## Change log
 - 2026-11-21: initial version (M0).
+- 2026-11-21: Bloom redesigned (cascade of three stages); shimmer amount taper (amount²) and an
+  energy-matching AGC in the granular shifter (overlap-add gain depends on grain coherence).

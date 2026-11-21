@@ -173,7 +173,7 @@ std::vector<Job> parityJobs()
     add ("pitch_plus7", { { P::shimMode, 1 }, { P::pitch, 7 }, { P::shimAmount, 50 } });
     add ("feedback_short_2s", { { P::decay, 2 } });
     add ("feedback_long_30s", { { P::decay, 30 } }, "pad", 24.0);
-    add ("feedback_infinite_freeze", { { P::decay, 30 }, { P::freeze, 1 } }, "pad", 14.0);
+    add ("feedback_infinite_freeze", { { P::decay, 30 }, { P::freeze, 1 }, { P::freezeMode, 1 } }, "pad", 14.0);   // Freeze + Add: the input is layered in and held
     add ("diffusion_0_echoes", { { P::diffusion, 0 } }, "guitar");
     add ("diffusion_55_fadein", { { P::diffusion, 55 } }, "guitar");
     add ("diffusion_100", { { P::diffusion, 100 }, { P::decay, 1.5f } }, "guitar");

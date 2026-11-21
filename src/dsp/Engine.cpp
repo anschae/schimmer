@@ -141,7 +141,8 @@ void Engine::updateChunkParams (const Settings& s, int n) noexcept
     const float mix = clampf (s.mix, 0.0f, 1.0f);
     const float outG = dbToGain (s.outDb);
     const float tilt = s.tiltDb;
-    const float early = cfg.earlyLevel;
+    // Bloom swells the tail in: the direct diffuser ("early") output fades out with it
+    const float early = cfg.earlyLevel * (1.0f - 0.85f * smoothstep (s.bloomSec / 1.0f));
     const float gateT = (s.freeze && s.freezeMode == FreezeMode::Freeze) ? 0.0f : 1.0f;
     const float darkT = s.dark ? 1.0f : 0.0f;
     const bool preShimOn = s.shimmerPre && s.shimmer.mode != ShimmerMode::Bypass;

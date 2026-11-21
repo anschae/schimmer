@@ -86,6 +86,13 @@ int main (int argc, char* argv[])
     pump (200);
     save (*ed, out.getChildFile ("editor.png"));
     save (*ed, out.getChildFile ("editor@2x.png"), 2.0f);
+    if (auto* se = dynamic_cast<schimmer::SchimmerEditor*> (ed.get()))
+        for (int page = 1; page < schimmer::MainView::kNumPages; ++page)
+        {
+            se->getView().selectPage (page);
+            pump (100);
+            save (*ed, out.getChildFile ("editor_page" + juce::String (page) + ".png"));
+        }
     ed.reset();
     proc.setPlayHead (nullptr);
     return 0;

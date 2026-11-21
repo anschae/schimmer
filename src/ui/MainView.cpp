@@ -8,10 +8,13 @@ using namespace theme;
 
 namespace
 {
-std::unique_ptr<juce::Component> makeControl (SchimmerProcessor& p, P prm, juce::Colour accentCol)
+std::unique_ptr<juce::Component> makeControl (SchimmerProcessor& p, P prm, juce::Colour accentCol, const juce::String& strip)
 {
     auto& apvts = p.getApvts();
     const auto& i = info (prm);
+    juce::String caption (i.name);
+    if (strip.isNotEmpty() && caption.startsWith (strip) && caption.length() > strip.length() + 2)
+        caption = caption.substring (strip.length());
     if (i.unit == Unit::Bool)
     {
         struct Holder : juce::Component
@@ -26,7 +29,7 @@ std::unique_ptr<juce::Component> makeControl (SchimmerProcessor& p, P prm, juce:
             void resized() override { chip.setBounds (getLocalBounds().withSizeKeepingCentre (getWidth() - 8, 30)); }
             ChipToggle chip;
         };
-        return std::make_unique<Holder> (apvts, i.id, i.name, i.tooltip, accentCol);
+        return std::make_unique<Holder> (apvts, i.id, caption.toRawUTF8(), i.tooltip, accentCol);
     }
     if (i.unit == Unit::Choice)
     {
@@ -42,14 +45,14 @@ std::unique_ptr<juce::Component> makeControl (SchimmerProcessor& p, P prm, juce:
             }
         };
         auto h = std::make_unique<Holder>();
-        h->caption = i.name;
+        h->caption = caption;
         h->box.addItemList (i.choices.isEmpty() ? noteNames() : i.choices, 1);
         h->box.setTooltip (juce::String (i.name) + ": " + i.tooltip);
         h->att = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, i.id, h->box);
         h->addAndMakeVisible (h->box);
         return h;
     }
-    auto k = std::make_unique<Knob> (apvts, i.id, i.name, accentCol);
+    auto k = std::make_unique<Knob> (apvts, i.id, caption, accentCol);
     k->setTooltipText (juce::String (i.name) + ": " + i.tooltip);
     k->setValueFormatter ([prm] (float v) { return formatValue (prm, v); });
     return k;
@@ -57,14 +60,26 @@ std::unique_ptr<juce::Component> makeControl (SchimmerProcessor& p, P prm, juce:
 } // namespace
 
 // ============================================================================ ParamPanel
-ParamPanel::ParamPanel (SchimmerProcessor& p, const juce::String& t, std::vector<P> params, juce::Colour accentCol, int cols, int rowHeight)
+ParamPanel::ParamPanel (SchimmerProcessor& p, const juce::String& t, std::vector<P> params, juce::Colour accentCol, int cols, int rowHeight,
+                        const juce::String& stripPrefix)
     : title (t), columns (cols), rowH (rowHeight)
 {
     for (auto prm : params)
     {
-        controls.push_back (makeControl (p, prm, accentCol));
+        controls.push_back (makeControl (p, prm, accentCol, stripPrefix));
+        ids.push_back (prm);
         addAndMakeVisible (*controls.back());
     }
+}
+
+void ParamPanel::setControlEnabled (P p, bool enabled)
+{
+    for (size_t k = 0; k < ids.size(); ++k)
+        if (ids[k] == p && controls[k]->isEnabled() != enabled)
+        {
+            controls[k]->setEnabled (enabled);
+            controls[k]->setAlpha (enabled ? 1.0f : 0.4f);
+        }
 }
 
 void ParamPanel::paint (juce::Graphics& g)
@@ -151,22 +166,22 @@ MainView::MainView (SchimmerProcessor& p)
     // ---- pages
     addAndMakeVisible (tabs);
     tabs.onChange = [this] (int i) { showPage (i); };
-    auto add = [this, &p] (std::vector<P> ps, juce::Colour c, int cols) {
-        auto panel = std::make_unique<ParamPanel> (p, "", std::move (ps), c, cols, 104);
+    auto add = [this, &p] (std::vector<P> ps, juce::Colour c, int cols, const char* strip = "") {
+        auto panel = std::make_unique<ParamPanel> (p, "", std::move (ps), c, cols, 104, strip);
         addChildComponent (*panel);
         pages.push_back (std::move (panel));
     };
     add ({ P::shimMode, P::pitch, P::fine, P::shimAmount, P::shimSmooth, P::shimPlace, P::pitchSnap, P::pitch2, P::voiceMix,
            P::shimLowCut, P::shimHighCut }, shimmer, 6);
     add ({ P::grainOn, P::grainSource, P::grainDest, P::grainSize, P::grainDensity, P::grainAmount, P::grainPitch, P::grainQuant,
-           P::grainPitchJit, P::grainSpray, P::grainReverse, P::grainScatter }, grains, 6);
+           P::grainPitchJit, P::grainSpray, P::grainReverse, P::grainScatter }, grains, 6, "Grain ");
     add ({ P::delayOn, P::delaySync, P::delayNote, P::delayTime, P::delayFeedback, P::delayToReverb, P::delayPingPong,
            P::delayOffset, P::delayHP, P::delayLP, P::delayMod, P::delayLevel }, delayL, 6);
     add ({ P::lowCut, P::highCut, P::lowMult, P::highMult, P::lowXover, P::highXover, P::warmth, P::inHP, P::inLP, P::tilt,
            P::width, P::bassMono }, tone, 6);
     add ({ P::duckOn, P::duckSource, P::duckTarget, P::duckPos, P::duckDetMode, P::duckFull, P::duckThresh, P::duckDepth,
            P::duckKnee, P::duckAttack, P::duckHold, P::duckRelease, P::duckRelSync, P::duckRelNote, P::duckLook, P::duckHP,
-           P::duckLP, P::duckRms }, duck, 9);
+           P::duckLP, P::duckRms }, duck, 9, "Duck ");
     add ({ P::freezeMode, P::clearTarget, P::autoClear, P::mixLock, P::morphOn, P::morph }, accent, 6);
     addChildComponent (duckDisplay);
     for (auto* b : { &storeA, &storeB })
@@ -195,6 +210,18 @@ void MainView::timerCallback()
     const bool synced = proc.value (P::preDelaySync) > 0.5f;
     preNote.setEnabled (synced);
     coreKnobs[4]->setEnabled (! synced);
+    coreKnobs[4]->setAlpha (synced ? 0.4f : 1.0f);
+    auto panel = [this] (int i) { return dynamic_cast<ParamPanel*> (pages[(size_t) i].get()); };
+    const bool dSync = proc.value (P::delaySync) > 0.5f;
+    panel (2)->setControlEnabled (P::delayTime, ! dSync);
+    panel (2)->setControlEnabled (P::delayNote, dSync);
+    const auto mode = juce::roundToInt (proc.value (P::shimMode));
+    panel (0)->setControlEnabled (P::pitch2, mode == 5);
+    panel (0)->setControlEnabled (P::voiceMix, mode == 5);
+    const bool relSync = proc.value (P::duckRelSync) > 0.5f;
+    panel (4)->setControlEnabled (P::duckRelease, ! relSync);
+    panel (4)->setControlEnabled (P::duckRelNote, relSync);
+    panel (4)->setControlEnabled (P::duckRms, juce::roundToInt (proc.value (P::duckDetMode)) == 1);
 }
 
 void MainView::showPage (int index)

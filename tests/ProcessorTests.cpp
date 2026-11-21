@@ -278,3 +278,35 @@ TEST_CASE ("Randomize respects locks and sensible ranges", "[randomize]")
         CHECK (p.value (P::freeze) < 0.5f);
     }
 }
+
+TEST_CASE ("Morph glides between snapshot A and B", "[morph]")
+{
+    auto tailEnergy = [] (float morph) {
+        SchimmerProcessor p;
+        p.setValueNotifying (P::mix, 100.0f);
+        p.setValueNotifying (P::decay, 1.0f);
+        p.setMorphSnapshot (0, p.captureSnapshot());
+        p.setValueNotifying (P::decay, 30.0f);
+        p.setMorphSnapshot (1, p.captureSnapshot());
+        p.setValueNotifying (P::decay, 5.0f);   // the knob value is ignored while morphing
+        p.setValueNotifying (P::morphOn, 1.0f);
+        p.setValueNotifying (P::morph, morph);
+        p.prepareToPlay (48000.0, 512);
+        juce::AudioBuffer<float> buf (4, 512);
+        juce::MidiBuffer midi;
+        double e = 0.0;
+        for (int b = 0; b < 400; ++b)
+        {
+            buf.clear();
+            if (b == 0) { buf.setSample (0, 0, 1.0f); buf.setSample (1, 0, 1.0f); }
+            p.processBlock (buf, midi);
+            if (b > 190)   // after 2 s
+                for (int i = 0; i < 512; ++i) e += buf.getSample (0, i) * buf.getSample (0, i);
+        }
+        return 10.0 * std::log10 (e + 1.0e-30);
+    };
+    const double a = tailEnergy (0.0f), mid = tailEnergy (50.0f), b = tailEnergy (100.0f);
+    INFO ("tail energy after 2 s: A " << a << " dB, 50 % " << mid << " dB, B " << b << " dB");
+    CHECK (a < mid - 20.0);
+    CHECK (mid < b);
+}

@@ -401,3 +401,35 @@ TEST_CASE ("Ducking lowers the wet signal while there is input", "[dsp][duck]")
     CHECK (during < (target == 2 ? -1.0 : -6.0));   // delay only: the (unducked) reverb stays
     CHECK (after > -3.0);
 }
+
+TEST_CASE ("Bloom swells the tail in over roughly the Bloom time", "[dsp][bloom]")
+{
+    const float bloom = GENERATE (1.0f, 3.0f);
+    auto s = wetSettings (1, 12.0f);
+    s.bloomSec = bloom;
+    const auto r = impulseResponse (s, 16.0);
+    const auto m = r.mono();
+    // smoothed energy envelope (50 ms)
+    const size_t win = (size_t) (0.05 * kFs);
+    double best = 0.0;
+    size_t bestAt = 0;
+    for (size_t i = 0; i + win < m.size(); i += win / 2)
+    {
+        double e = 0.0;
+        for (size_t k = 0; k < win; ++k) e += (double) m[i + k] * m[i + k];
+        if (e > best) { best = e; bestAt = i; }
+    }
+    const double peakT = (double) bestAt / kFs;
+    INFO ("bloom " << bloom << " s: envelope peak at " << peakT << " s");
+    CHECK (peakT > bloom * 0.6);
+    CHECK (peakT < bloom * 1.8);
+    // and the display model agrees
+    double mBest = -1e9, mAt = 0.0;
+    for (double t = 0.0; t < 10.0; t += 0.01)
+    {
+        const double db = dsp::model::envelopeDb (s, t, dsp::model::t60At (s, 1000.0));
+        if (db > mBest) { mBest = db; mAt = t; }
+    }
+    INFO ("model peak at " << mAt << " s");
+    CHECK (std::abs (mAt - peakT) < bloom * 0.6);
+}

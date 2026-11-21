@@ -67,15 +67,19 @@ inline double envelopeDb (const Settings& s, double t, double t60)
     double e;
     if (s.bloomSec > 0.02f && ! s.freeze)
     {
-        // tank integrates the bloom network's release: difference of exponentials
-        const double tauB = std::max (0.02, s.bloomSec * 1.6) / 13.8155;
-        const double a = tauT, b = std::max (tauB + 1.0e-4, tauR);
-        e = (std::exp (-tt / a) - std::exp (-tt / b)) / (1.0 - b / a);
-        const double tPk = a * b / (a - b) * std::log (a / b);
-        const double pk = (std::exp (-tPk / a) - std::exp (-tPk / b)) / (1.0 - b / a);
-        e /= std::max (1.0e-9, pk);
-        // the bloom network spreads the level over time: lower peak
-        e *= std::pow (std::max (0.05, tauR / b), 0.35);
+        // Bloom: three cascaded stages release the energy as a gamma(3, tauB)
+        // density; the tank integrates it with its own decay (numeric convolution).
+        const double tauB = std::max (0.01, (double) s.bloomSec / 2.2);
+        const int steps = 160;
+        const double ds = tt / steps;
+        double acc = 0.0;
+        for (int k = 0; k < steps; ++k)
+        {
+            const double sx = (k + 0.5) * ds;
+            const double f = sx * sx / (2.0 * tauB * tauB * tauB) * std::exp (-sx / tauB);
+            acc += f * std::exp (-(tt - sx) / tauT) * ds;
+        }
+        e = acc * std::max (0.2, 1.0 - std::exp (-tt / tauR));
     }
     else
     {

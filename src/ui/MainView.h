@@ -15,7 +15,9 @@ class ParamPanel : public juce::Component
 {
 public:
     ParamPanel (SchimmerProcessor& p, const juce::String& title, std::vector<P> params, juce::Colour accent, int columns,
-                int rowHeight = 92);
+                int rowHeight = 92, const juce::String& stripPrefix = {});
+    /** Enables/disables the control of one parameter (e.g. delay time while synced). */
+    void setControlEnabled (P p, bool enabled);
     void paint (juce::Graphics&) override;
     void resized() override;
     /** Area below the grid (for extra components). */
@@ -26,6 +28,7 @@ private:
     juce::String title;
     int columns, rowH;
     std::vector<std::unique_ptr<juce::Component>> controls;
+    std::vector<P> ids;
     juce::Rectangle<int> freeArea;
 };
 
@@ -38,6 +41,9 @@ public:
     ~MainView() override;
     void paint (juce::Graphics&) override;
     void resized() override;
+    /** Selects a tab page (also used by the snapshot tool). */
+    void selectPage (int index) { tabs.setSelected (index); showPage (index); }
+    static constexpr int kNumPages = 6;
 
 private:
     void timerCallback() override;

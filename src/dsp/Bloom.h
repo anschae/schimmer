@@ -1,8 +1,10 @@
 #pragma once
-// Bloom network: an 8-line FDN between the input diffuser and the tank. It
-// stores incoming energy and releases it slowly into the tank, so the wet
-// envelope rises over roughly the Bloom time (works for plucks and pads alike).
-// See docs/RESEARCH.md section 12.
+// Bloom network: three cascaded 8-line feedback networks between the input
+// diffuser and the tank. Each stage stores the incoming energy and releases it
+// with an exponential decay; in series, the released energy follows a gamma
+// curve (t^2 e^(-t/tau)) that rises smoothly and peaks around the Bloom time.
+// The tank then integrates it, so the wet signal swells in slowly - for plucks
+// as well as pads. See docs/RESEARCH.md section 12.
 
 #include "Filters.h"
 #include "Hadamard.h"
@@ -14,34 +16,43 @@ class Bloom
 {
 public:
     static constexpr int kCh = 8;
+    static constexpr int kStages = 3;
 
     void prepare (float sampleRate)
     {
         fs = sampleRate;
         Rng r (0xb100b100u);
-        for (int i = 0; i < kCh; ++i)
-        {
-            const float rel = ((float) ((i * 3) % kCh) + 0.25f + 0.5f * r.uniform()) / (float) kCh;
-            baseMs[i] = 55.0f * std::pow (3.0f, rel);   // 55 .. 165 ms
-            buf[i].allocate ((int) std::ceil ((baseMs[i] * 1.5f + 4.0f) * 0.001f * fs) + 8);
-            flip[i] = (r.next() & 1u) ? -1.0f : 1.0f;
-            modPhase[i] = r.uniform() * kTwoPi;
-            modRate[i] = 0.11f + 0.3f * r.uniform();
-        }
+        for (int s = 0; s < kStages; ++s)
+            for (int i = 0; i < kCh; ++i)
+            {
+                auto& st = stages[(size_t) s];
+                const float rel = ((float) ((i * 3 + s) % kCh) + 0.25f + 0.5f * r.uniform()) / (float) kCh;
+                st.baseMs[i] = 37.0f * std::pow (3.0f, rel);   // 37 .. 111 ms
+                st.buf[i].allocate ((int) std::ceil ((st.baseMs[i] * 1.5f + 4.0f) * 0.001f * fs) + 8);
+                st.flip[i] = (r.next() & 1u) ? -1.0f : 1.0f;
+                st.modPhase[i] = r.uniform() * kTwoPi;
+                st.modRate[i] = 0.11f + 0.3f * r.uniform();
+            }
         reset();
     }
 
     void reset()
     {
-        for (auto& b : buf) b.reset();
-        for (auto& f : lp) f.reset();
+        for (auto& st : stages)
+        {
+            for (auto& b : st.buf) b.reset();
+            for (auto& f : st.lp) f.reset();
+        }
         first = true;
     }
 
     void clear() noexcept
     {
-        for (auto& b : buf) b.clearFromNow();
-        for (auto& f : lp) f.reset();
+        for (auto& st : stages)
+        {
+            for (auto& b : st.buf) b.clearFromNow();
+            for (auto& f : st.lp) f.reset();
+        }
     }
 
     /** bloomSec: 0 = off; scale = tank size scale. */
@@ -52,30 +63,39 @@ public:
             sMix.setTime (0.1f, fs);
             sT60.setTime (0.1f, fs);
         }
-        const float mixT = freeze ? 0.0f : smoothstep (bloomSec / 0.4f);
-        const float t60T = std::max (0.05f, bloomSec * 1.6f);
+        const float mixT = freeze ? 0.0f : smoothstep (bloomSec / 0.3f);
+        // per-stage energy time constant tau = T60 / 13.8; the cascade (plus the
+        // tank) peaks at roughly 2.2 tau -> tau ~ bloom / 2.2
+        const float t60T = std::max (0.05f, bloomSec * 13.8f / 2.2f);
         if (first) { sMix.snap (mixT); sT60.snap (t60T); }
         mixRamp.setTarget (sMix.next (mixT, n), n);
         const float t60 = sT60.next (t60T, n);
+        // the shelf losses grow with the number of passes: make up ~1.2 dB per second of bloom
+        const float outT = 1.25f * std::pow (10.0f, 0.06f * clampf (bloomSec, 0.0f, 6.0f));
+        if (first) outGain.snap (outT);
+        outGain.setTarget (outT, n);
         const float sc = std::sqrt (clampf (sizeScale, 0.25f, 2.0f));
-        float sumG2 = 0.0f;
-        for (int i = 0; i < kCh; ++i)
+        for (auto& st : stages)
         {
-            modPhase[i] += kTwoPi * modRate[i] * (float) n / fs;
-            if (modPhase[i] > kTwoPi) modPhase[i] -= kTwoPi;
-            const float lenS = (baseMs[i] * sc + 1.0f + std::sin (modPhase[i])) * 0.001f * fs;
-            if (first) len[i].snap (lenS);
-            len[i].setTarget (lenS, n);
-            const float g = decayGain (lenS / fs, t60);
-            if (first) gain[i].snap (g);
-            gain[i].setTarget (g, n);
-            sumG2 += g * g;
-            lp[i].setCutoff (7000.0f, fs);
+            float sumG2 = 0.0f;
+            for (int i = 0; i < kCh; ++i)
+            {
+                st.modPhase[i] += kTwoPi * st.modRate[i] * (float) n / fs;
+                if (st.modPhase[i] > kTwoPi) st.modPhase[i] -= kTwoPi;
+                const float lenS = (st.baseMs[i] * sc + 1.0f + std::sin (st.modPhase[i])) * 0.001f * fs;
+                if (first) st.len[i].snap (lenS);
+                st.len[i].setTarget (lenS, n);
+                const float g = decayGain (lenS / fs, t60);
+                if (first) st.gain[i].snap (g);
+                st.gain[i].setTarget (g, n);
+                sumG2 += g * g;
+                st.lp[i].setCutoff (7000.0f, fs);
+            }
+            // normalise the stored energy (~1 / (1 - g^2)) back to unity
+            const float normT = std::sqrt (std::max (0.0f, 1.0f - sumG2 / (float) kCh));
+            if (first) st.norm.snap (normT);
+            st.norm.setTarget (normT, n);
         }
-        // normalise the stored energy (~1 / (1 - g^2)) back to unity
-        const float normT = std::sqrt (std::max (0.0f, 1.0f - sumG2 / (float) kCh));
-        if (first) normRamp.snap (normT);
-        normRamp.setTarget (normT, n);
         first = false;
     }
 
@@ -85,27 +105,39 @@ public:
     inline void processSample (float* x) noexcept
     {
         const float mix = mixRamp.next();
-        const float nm = normRamp.next();
-        float y[kCh];
-        for (int i = 0; i < kCh; ++i)
-            y[i] = buf[i].readLinear (len[i].next());
-        float v[kCh];
-        for (int i = 0; i < kCh; ++i)
-            v[(i * 5 + 1) & 7] = flip[i] * lp[i].highShelf (y[i], 0.8f) * gain[i].next();
-        hadamardInPlace<kCh> (v);
-        for (int i = 0; i < kCh; ++i)
+        const float og = outGain.next();
+        float sig[kCh];
+        for (int i = 0; i < kCh; ++i) sig[i] = x[i];
+        for (auto& st : stages)
         {
-            buf[i].write (v[i] + x[i]);
-            x[i] += mix * (y[i] * nm * 1.6f - x[i]);
+            const float nm = st.norm.next();
+            float y[kCh], v[kCh];
+            for (int i = 0; i < kCh; ++i)
+                y[i] = st.buf[i].readLinear (st.len[i].next());
+            for (int i = 0; i < kCh; ++i)
+                v[(i * 5 + 1) & 7] = st.flip[i] * st.lp[i].highShelf (y[i], 0.85f) * st.gain[i].next();
+            hadamardInPlace<kCh> (v);
+            for (int i = 0; i < kCh; ++i)
+            {
+                st.buf[i].write (v[i] + sig[i]);
+                sig[i] = y[i] * nm;
+            }
         }
+        for (int i = 0; i < kCh; ++i)
+            x[i] += mix * (sig[i] * og - x[i]);
     }
 
 private:
+    struct Stage
+    {
+        RingBuffer buf[kCh];
+        float baseMs[kCh] {}, flip[kCh] {}, modPhase[kCh] {}, modRate[kCh] {};
+        OnePole lp[kCh];
+        Ramp len[kCh], gain[kCh], norm;
+    };
     float fs = 48000.0f;
-    RingBuffer buf[kCh];
-    float baseMs[kCh] {}, flip[kCh] {}, modPhase[kCh] {}, modRate[kCh] {};
-    OnePole lp[kCh];
-    Ramp len[kCh], gain[kCh], mixRamp, normRamp;
+    std::array<Stage, kStages> stages;
+    Ramp mixRamp, outGain;
     Smoother sMix, sT60;
     bool first = true;
 };

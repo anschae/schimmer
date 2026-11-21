@@ -28,8 +28,9 @@ in German; code, comments, docs and commit messages are in English.
 - M2 reverb core: implemented and measured (RT60, NED, resonance, flutter, decorrelation,
   sample-rate invariance, level consistency, clicks); sonic tuning ongoing.
 - M3 delay, M4 shimmer, M5 grains, M6 clear/freeze/bloom, M7 ducking: DSP implemented with tests.
-- M8 UI: placeholder grid of all controls; Tail View / decay curve / ducking display still to do.
-- M9 presets (25 factory presets), mix lock, morph (engine + state): done; randomize: to do.
+- M8 UI: done (header with presets/randomize/locks/quality/freeze/clear, Tail View, decay curve,
+  stereo/band meters, core row, six tab pages incl. ducking display and morph).
+- M9 presets (25 factory presets), mix lock, morph, randomize with section locks: done.
 - M10 polish: to do.
 
 ## Build / test (Linux)
@@ -74,7 +75,10 @@ src/dsp/                plain C++ (no JUCE): the whole signal path
   RingBuffer.h          pow2 ring buffer with O(1) clear
   Modes.h               mode table (sizes, spreads, stages, early level, modulation, stereo)
 src/model/              FactoryPresets (code), PresetManager (user presets *.schpreset, A/B)
-src/ui/                 LookAndFeel/Theme/Widgets/DuckingDisplay (from Prog Delay), MainView
+src/ui/                 LookAndFeel/Theme/Widgets/DuckingDisplay/PresetBar (from Prog Delay), MainView (layout,
+                        ParamPanel pages), Displays (MeterHub, TailView, DecayCurveView, StereoMeter)
+src/dsp/ReverbModel.h   analytic T60(f) and envelope used by the displays (tests compare it with renders)
+src/model/Randomizer.*  randomize with section locks (musical ranges per parameter)
 tests/                  Catch2: DspTests (measurements), ProcessorTests; Analysis.h = metrics
 tools/RenderTool.cpp    offline renders: WAV + spectrogram PNG + INDEX.md (CI: audio-demos)
 tools/Snapshot.cpp      editor -> PNG
@@ -111,7 +115,12 @@ Tank details:
   Shifter latency is added to the decay-gain loop length.
 - Safety limiter: line RMS per 32-sample chunk above 0.7 reduces the loop gain (attack per chunk,
   release 300 ms). NaN guard resets the tank.
-- Mode switch: fade 5 ms → clear reverb buffers → new mode (delay keeps running).
+- Mode switch (and quality change): fade 5 ms → clear reverb buffers → new mode (delay keeps running).
+- Bloom: three cascaded energy-normalised 8-line stages (τ = bloom/2.2 each) → gamma-shaped
+  release, peak ≈ Bloom time; early output fades out with Bloom.
+- Shimmer amount: shifted fraction per pass = amount²; GrainShifter has an energy-matching AGC
+  (120 ms RMS in vs out, gain 0.35..1.8) so the decay time is independent of pitch/smoothness;
+  the shifted path never goes below 30 Hz.
 - Clear Tail: rising edge → 5 ms fade → O(1) buffer clear (`RingBuffer::clearFromNow`) → full gain.
 
 ## Parameters (APVTS, version hint 1)
@@ -132,8 +141,6 @@ linux: tests + `[.long]` 10-minute stability + pluginval (strictness 10) + rende
 collects `Schimmer-macOS.zip` / `Schimmer-Windows.zip`; on `v*` tags attaches them to a release.
 
 ## Known issues / open points
-- UI is a placeholder (all controls in a grid); visualisations missing.
-- Randomize not implemented yet.
 - Not yet tested by a person in Cubase / Logic.
 - Quality: Eco = 8 tank lines and one diffusion stage less, Ultra = one diffusion stage more (all modes).
 - Chamber mode has lower modal density (allowed +1 dB more spectral ripple in the test), like
