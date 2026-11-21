@@ -149,6 +149,7 @@ private:
     bool lastClearTrigger = false;
     bool clearDelayPending = true;
     int activeMode = -1, pendingMode = 0;
+    Quality activeQuality = Quality::High, pendingQuality = Quality::High;
     bool modeSwitchPending = false;
 
     // per-chunk scratch

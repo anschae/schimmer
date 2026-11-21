@@ -52,6 +52,9 @@ public:
     juce::String getCurrentPresetName() const { return currentPresetName; }
     void setCurrentPresetName (const juce::String& n) { currentPresetName = n; }
 
+    /** Randomize lock bits (one per section in kSections), saved with the state. */
+    uint32_t randomLocks = 0;
+
     /** Triggers Clear Tail from the UI (sets the parameter and resets it shortly after). */
     void triggerClearTail();
 

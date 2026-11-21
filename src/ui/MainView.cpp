@@ -1,157 +1,304 @@
 #include "MainView.h"
 #include "PluginProcessor.h"
+#include "model/Randomizer.h"
 
 namespace schimmer
 {
 using namespace theme;
 
-ParamPanel::ParamPanel (SchimmerProcessor& p, const juce::String& t, std::vector<P> params, juce::Colour accent, int cols)
-    : title (t), columns (cols)
+namespace
+{
+std::unique_ptr<juce::Component> makeControl (SchimmerProcessor& p, P prm, juce::Colour accentCol)
 {
     auto& apvts = p.getApvts();
+    const auto& i = info (prm);
+    if (i.unit == Unit::Bool)
+    {
+        struct Holder : juce::Component
+        {
+            Holder (juce::AudioProcessorValueTreeState& a, const char* id, const char* name, const char* tip, juce::Colour c)
+                : chip (a, id, name)
+            {
+                chip.setTooltip (tip);
+                chip.getProperties().set ("accent", c.toString());
+                addAndMakeVisible (chip);
+            }
+            void resized() override { chip.setBounds (getLocalBounds().withSizeKeepingCentre (getWidth() - 8, 30)); }
+            ChipToggle chip;
+        };
+        return std::make_unique<Holder> (apvts, i.id, i.name, i.tooltip, accentCol);
+    }
+    if (i.unit == Unit::Choice)
+    {
+        struct Holder : juce::Component
+        {
+            juce::ComboBox box;
+            std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> att;
+            juce::String caption;
+            void resized() override { box.setBounds (getLocalBounds().withTrimmedTop (18).withSizeKeepingCentre (getWidth() - 8, 28)); }
+            void paint (juce::Graphics& g) override
+            {
+                drawCaption (g, caption.toUpperCase(), getLocalBounds().removeFromTop (18).reduced (4, 0), textDim, 10.5f);
+            }
+        };
+        auto h = std::make_unique<Holder>();
+        h->caption = i.name;
+        h->box.addItemList (i.choices.isEmpty() ? noteNames() : i.choices, 1);
+        h->box.setTooltip (juce::String (i.name) + ": " + i.tooltip);
+        h->att = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, i.id, h->box);
+        h->addAndMakeVisible (h->box);
+        return h;
+    }
+    auto k = std::make_unique<Knob> (apvts, i.id, i.name, accentCol);
+    k->setTooltipText (juce::String (i.name) + ": " + i.tooltip);
+    k->setValueFormatter ([prm] (float v) { return formatValue (prm, v); });
+    return k;
+}
+} // namespace
+
+// ============================================================================ ParamPanel
+ParamPanel::ParamPanel (SchimmerProcessor& p, const juce::String& t, std::vector<P> params, juce::Colour accentCol, int cols, int rowHeight)
+    : title (t), columns (cols), rowH (rowHeight)
+{
     for (auto prm : params)
     {
-        const auto& i = info (prm);
-        std::unique_ptr<juce::Component> c;
-        if (i.unit == Unit::Bool)
-        {
-            auto chip = std::make_unique<ChipToggle> (apvts, i.id, i.name);
-            chip->setTooltip (i.tooltip);
-            c = std::move (chip);
-        }
-        else if (i.unit == Unit::Choice)
-        {
-            auto box = std::make_unique<juce::ComboBox>();
-            const auto& names = i.choices.isEmpty() ? noteNames() : i.choices;
-            box->addItemList (names, 1);
-            box->setTooltip (juce::String (i.name) + ": " + i.tooltip);
-            auto* raw = box.get();
-            struct Holder : juce::Component
-            {
-                std::unique_ptr<juce::ComboBox> box;
-                std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> att;
-                juce::String caption;
-                void resized() override { box->setBounds (getLocalBounds().withTrimmedTop (16).withSizeKeepingCentre (getWidth() - 6, 26)); }
-                void paint (juce::Graphics& g) override { drawCaption (g, caption.toUpperCase(), getLocalBounds().removeFromTop (16), textDim, 10.5f); }
-            };
-            auto h = std::make_unique<Holder>();
-            h->caption = i.name;
-            h->att = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, i.id, *raw);
-            h->box = std::move (box);
-            h->addAndMakeVisible (*raw);
-            c = std::move (h);
-        }
-        else
-        {
-            auto k = std::make_unique<Knob> (apvts, i.id, i.name, accent);
-            k->setTooltipText (i.tooltip);
-            k->setValueFormatter ([prm] (float v) { return formatValue (prm, v); });
-            c = std::move (k);
-        }
-        addAndMakeVisible (*c);
-        controls.push_back (std::move (c));
+        controls.push_back (makeControl (p, prm, accentCol));
+        addAndMakeVisible (*controls.back());
     }
 }
 
 void ParamPanel::paint (juce::Graphics& g)
 {
-    drawPanel (g, getLocalBounds().toFloat());
-    drawCaption (g, title.toUpperCase(), getLocalBounds().reduced (12, 6).removeFromTop (18));
+    if (drawFrame)
+        drawPanel (g, getLocalBounds().toFloat());
+    if (title.isNotEmpty())
+        drawCaption (g, title.toUpperCase(), getLocalBounds().reduced (12, 6).removeFromTop (18));
 }
 
 void ParamPanel::resized()
 {
     auto r = getLocalBounds().reduced (8, 6);
-    r.removeFromTop (20);
+    if (title.isNotEmpty()) r.removeFromTop (20);
     const int rows = ((int) controls.size() + columns - 1) / columns;
-    const int cw = r.getWidth() / columns, rh = rows > 0 ? std::min (92, r.getHeight() / rows) : 0;
+    const int cw = r.getWidth() / columns;
+    const int rh = rows > 0 ? std::min (rowH, r.getHeight() / rows) : 0;
     for (size_t k = 0; k < controls.size(); ++k)
     {
         const int col = (int) k % columns, row = (int) k / columns;
         controls[k]->setBounds (r.getX() + col * cw, r.getY() + row * rh, cw, rh);
     }
+    freeArea = r.withTrimmedTop (rows * rh);
 }
 
-MainView::MainView (SchimmerProcessor& p) : proc (p)
+// ============================================================================ MainView
+MainView::MainView (SchimmerProcessor& p)
+    : proc (p), hub (p), presetBar (p), freezeButton (p.getApvts(), pid (P::freeze), "Freeze"),
+      tailView (p, hub), decayView (p), stereoMeter (p, hub),
+      modeSel (p.getApvts(), pid (P::mode)), colorSel (p.getApvts(), pid (P::color)),
+      preSync (p.getApvts(), pid (P::preDelaySync), "Sync"),
+      tabs (juce::StringArray { "Shimmer", "Grains", "Delay", "Tone & Stereo", "Ducking", "Freeze / Clear / Morph" }),
+      duckDisplay (p)
 {
-    addAndMakeVisible (presetBox);
-    presetBox.setTooltip ("Factory and user presets.");
-    presetBox.onChange = [this] {
-        const auto all = proc.getPresets().list();
-        const int idx = presetBox.getSelectedItemIndex();
-        if (idx >= 0 && idx < (int) all.size())
-            proc.getPresets().load (all[(size_t) idx]);
+    addAndMakeVisible (presetBar);
+    for (auto* b : { &randomButton, &lockButton, &clearButton })
+        addAndMakeVisible (b);
+    randomButton.setTooltip ("Randomize all unlocked sections within musically sensible ranges (Mix is never changed).");
+    randomButton.getProperties().set ("accent", accent.toString());
+    randomButton.onClick = [this] {
+        juce::Random rng;
+        Randomizer::randomize (proc, proc.randomLocks, rng);
     };
-    refreshPresets();
-    addAndMakeVisible (clearButton);
-    clearButton.setTooltip ("Fade out and clear the reverb tail immediately (also automatable as 'Clear Tail').");
+    lockButton.setTooltip ("Choose which sections Randomize leaves alone.");
+    lockButton.onClick = [this] { showLockMenu(); };
+    clearButton.setTooltip ("Fade out and clear the reverb tail immediately. Automatable as the 'Clear Tail' parameter: "
+                            "a rising edge (0 -> 1) triggers it.");
     clearButton.onClick = [this] { proc.triggerClearTail(); };
+    addAndMakeVisible (freezeButton);
+    freezeButton.setTooltip (info (P::freeze).tooltip);
+    freezeButton.getProperties().set ("accent", shimmer.toString());
+    addAndMakeVisible (qualityBox);
+    qualityBox.addItemList (info (P::quality).choices, 1);
+    qualityBox.setTooltip (info (P::quality).tooltip);
+    qualityAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (p.getApvts(), pid (P::quality), qualityBox);
 
-    const auto cCore = juce::Colour (0xff7fb8ff), cTone = juce::Colour (0xff9fd6c8), cShim = juce::Colour (0xffd9b2ff),
-               cGrain = juce::Colour (0xffffc58a), cDelay = juce::Colour (0xff2ec4d6), cOut = juce::Colour (0xffe6e9ef),
-               cDuck = duck;
-    auto add = [this, &p] (const char* t, std::vector<P> ps, juce::Colour c, int cols) {
-        panels.push_back (std::make_unique<ParamPanel> (p, t, std::move (ps), c, cols));
-        addAndMakeVisible (*panels.back());
+    addAndMakeVisible (tailView);
+    addAndMakeVisible (decayView);
+    addAndMakeVisible (stereoMeter);
+
+    addAndMakeVisible (modeSel);
+    modeSel.setTooltip (info (P::mode).tooltip);
+    modeSel.setAccent (reverb);
+    addAndMakeVisible (colorSel);
+    colorSel.setTooltip (info (P::color).tooltip);
+    colorSel.setAccent (tone);
+    addAndMakeVisible (preSync);
+    preSync.setTooltip (info (P::preDelaySync).tooltip);
+    addAndMakeVisible (preNote);
+    preNote.addItemList (noteNames(), 1);
+    preNote.setTooltip (info (P::preDelayNote).tooltip);
+    preNoteAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (p.getApvts(), pid (P::preDelayNote), preNote);
+
+    for (auto prm : { P::size, P::decay, P::diffusion, P::bloom, P::preDelay, P::modRate, P::modDepth, P::modDrift, P::mix, P::output })
+    {
+        const auto c = prm == P::mix || prm == P::output ? text : reverb;
+        auto k = std::make_unique<Knob> (p.getApvts(), pid (prm), info (prm).name, c);
+        k->setTooltipText (juce::String (info (prm).name) + ": " + info (prm).tooltip);
+        k->setValueFormatter ([prm] (float v) { return formatValue (prm, v); });
+        addAndMakeVisible (*k);
+        coreKnobs.push_back (std::move (k));
+    }
+
+    // ---- pages
+    addAndMakeVisible (tabs);
+    tabs.onChange = [this] (int i) { showPage (i); };
+    auto add = [this, &p] (std::vector<P> ps, juce::Colour c, int cols) {
+        auto panel = std::make_unique<ParamPanel> (p, "", std::move (ps), c, cols, 104);
+        addChildComponent (*panel);
+        pages.push_back (std::move (panel));
     };
-    add ("Reverb", { P::mode, P::size, P::decay, P::diffusion, P::bloom, P::preDelay, P::preDelaySync, P::preDelayNote,
-                     P::modRate, P::modDepth, P::modDrift, P::freeze, P::freezeMode, P::quality }, cCore, 7);
-    add ("Tone", { P::lowCut, P::highCut, P::lowMult, P::highMult, P::lowXover, P::highXover, P::color, P::warmth }, cTone, 4);
-    add ("Shimmer", { P::shimMode, P::pitch, P::pitchSnap, P::fine, P::shimAmount, P::pitch2, P::voiceMix, P::shimLowCut,
-                      P::shimHighCut, P::shimSmooth, P::shimPlace }, cShim, 6);
-    add ("Grains", { P::grainOn, P::grainSource, P::grainDest, P::grainSize, P::grainDensity, P::grainPitch, P::grainQuant,
-                     P::grainSpray, P::grainPitchJit, P::grainReverse, P::grainScatter, P::grainAmount }, cGrain, 6);
-    add ("Delay", { P::delayOn, P::delayTime, P::delaySync, P::delayNote, P::delayFeedback, P::delayPingPong, P::delayOffset,
-                    P::delayHP, P::delayLP, P::delayMod, P::delayToReverb, P::delayLevel }, cDelay, 6);
-    add ("Output", { P::inHP, P::inLP, P::tilt, P::width, P::bassMono, P::mix, P::mixLock, P::output, P::clearTarget, P::autoClear,
-                     P::morphOn, P::morph }, cOut, 6);
-    add ("Ducking", { P::duckOn, P::duckSource, P::duckThresh, P::duckDepth, P::duckFull, P::duckKnee, P::duckAttack, P::duckHold,
-                      P::duckRelease, P::duckRelSync, P::duckRelNote, P::duckLook, P::duckTarget, P::duckPos, P::duckHP,
-                      P::duckLP, P::duckDetMode, P::duckRms }, cDuck, 9);
+    add ({ P::shimMode, P::pitch, P::fine, P::shimAmount, P::shimSmooth, P::shimPlace, P::pitchSnap, P::pitch2, P::voiceMix,
+           P::shimLowCut, P::shimHighCut }, shimmer, 6);
+    add ({ P::grainOn, P::grainSource, P::grainDest, P::grainSize, P::grainDensity, P::grainAmount, P::grainPitch, P::grainQuant,
+           P::grainPitchJit, P::grainSpray, P::grainReverse, P::grainScatter }, grains, 6);
+    add ({ P::delayOn, P::delaySync, P::delayNote, P::delayTime, P::delayFeedback, P::delayToReverb, P::delayPingPong,
+           P::delayOffset, P::delayHP, P::delayLP, P::delayMod, P::delayLevel }, delayL, 6);
+    add ({ P::lowCut, P::highCut, P::lowMult, P::highMult, P::lowXover, P::highXover, P::warmth, P::inHP, P::inLP, P::tilt,
+           P::width, P::bassMono }, tone, 6);
+    add ({ P::duckOn, P::duckSource, P::duckTarget, P::duckPos, P::duckDetMode, P::duckFull, P::duckThresh, P::duckDepth,
+           P::duckKnee, P::duckAttack, P::duckHold, P::duckRelease, P::duckRelSync, P::duckRelNote, P::duckLook, P::duckHP,
+           P::duckLP, P::duckRms }, duck, 9);
+    add ({ P::freezeMode, P::clearTarget, P::autoClear, P::mixLock, P::morphOn, P::morph }, accent, 6);
+    addChildComponent (duckDisplay);
+    for (auto* b : { &storeA, &storeB })
+    {
+        addChildComponent (b);
+        b->getProperties().set ("accent", accent.toString());
+    }
+    storeA.setTooltip ("Store the current settings as morph snapshot A (Morph 0 %).");
+    storeB.setTooltip ("Store the current settings as morph snapshot B (Morph 100 %).");
+    storeA.onClick = [this] { proc.setMorphSnapshot (0, proc.captureSnapshot()); repaint(); };
+    storeB.onClick = [this] { proc.setMorphSnapshot (1, proc.captureSnapshot()); repaint(); };
+
+    hub.onUpdate = [this] { tailView.repaint(); stereoMeter.repaint(); };
+    tabs.setSelected (0);
+    showPage (0);
+    startTimerHz (10);
 }
 
-MainView::~MainView() = default;
+MainView::~MainView() { stopTimer(); }
 
-void MainView::refreshPresets()
+void MainView::timerCallback()
 {
-    presetBox.clear (juce::dontSendNotification);
-    int id = 1, sel = 0;
-    for (const auto& e : proc.getPresets().list())
-    {
-        if (e.displayName() == proc.getCurrentPresetName()) sel = id;
-        presetBox.addItem (e.category + " / " + e.name, id++);
-    }
-    presetBox.setSelectedId (sel, juce::dontSendNotification);
+    // parameter changes from the host / automation: refresh the static displays
+    decayView.repaint();
+    tailView.repaint();
+    const bool synced = proc.value (P::preDelaySync) > 0.5f;
+    preNote.setEnabled (synced);
+    coreKnobs[4]->setEnabled (! synced);
+}
+
+void MainView::showPage (int index)
+{
+    currentPage = index;
+    for (int i = 0; i < (int) pages.size(); ++i)
+        pages[(size_t) i]->setVisible (i == index);
+    duckDisplay.setVisible (index == 4);
+    storeA.setVisible (index == 5);
+    storeB.setVisible (index == 5);
+    resized();
+    repaint();
+}
+
+void MainView::showLockMenu()
+{
+    juce::PopupMenu m;
+    m.addSectionHeader ("Randomize leaves these alone:");
+    for (int s = 0; s < kNumSections; ++s)
+        m.addItem (1 + s, kSections[s], true, (proc.randomLocks >> s) & 1u);
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&lockButton), [this] (int r) {
+        if (r >= 1 && r <= kNumSections)
+        {
+            proc.randomLocks ^= 1u << (r - 1);
+            showLockMenu();   // keep the menu open for more toggles
+        }
+    });
 }
 
 void MainView::paint (juce::Graphics& g)
 {
     g.fillAll (bg);
-    auto head = getLocalBounds().removeFromTop (52);
-    g.setColour (header);
+    auto head = getLocalBounds().removeFromTop (56);
+    g.setGradientFill (juce::ColourGradient (header, 0.0f, 0.0f, bg, 0.0f, 56.0f, false));
     g.fillRect (head);
     g.setColour (text);
-    g.setFont (font (24.0f, true).withExtraKerningFactor (0.12f));
-    g.drawText ("SCHIMMER", head.reduced (20, 0), juce::Justification::centredLeft);
+    g.setFont (font (25.0f, true).withExtraKerningFactor (0.22f));
+    g.drawText ("SCHIMMER", head.reduced (22, 0), juce::Justification::centredLeft);
+    g.setColour (shimmer.withAlpha (0.6f));
+    g.setFont (font (11.0f).withExtraKerningFactor (0.15f));
+    g.drawText ("anschae", head.reduced (24, 0).withTrimmedLeft (175), juce::Justification::centredLeft);
+
+    // core row frame
+    drawPanel (g, juce::Rectangle<float> (12.0f, 372.0f, 1256.0f, 164.0f));
+    drawCaption (g, "MODE", { 26, 378, 200, 16 });
+    drawCaption (g, "COLOR", { 26, 438, 200, 16 });
+    drawCaption (g, "PRE-DELAY SYNC", { 26, 486, 200, 16 });
+    // page frame
+    drawPanel (g, juce::Rectangle<float> (12.0f, 578.0f, 1256.0f, 232.0f));
+    if (currentPage == 5)
+    {
+        g.setColour (textDim);
+        g.setFont (font (12.0f));
+        auto r = juce::Rectangle<int> (24, 720, 1220, 70);
+        juce::String sA = proc.hasMorphSnapshot (0) ? "A stored" : "A empty", sB = proc.hasMorphSnapshot (1) ? "B stored" : "B empty";
+        g.drawFittedText ("Morph: store two snapshots, switch Morph On and move Morph (automatable) to glide between them. "
+                          "Choices and switches flip at 50 %. Mix stays put when Mix Lock is on.   [" + sA + " / " + sB + "]",
+                          r.withTrimmedLeft (260), juce::Justification::centredLeft, 3);
+    }
 }
 
 void MainView::resized()
 {
-    auto r = getLocalBounds();
-    auto head = r.removeFromTop (52).reduced (16, 10);
-    head.removeFromLeft (200);
-    presetBox.setBounds (head.removeFromLeft (360));
-    clearButton.setBounds (head.removeFromRight (120));
-    r.reduce (10, 8);
-    auto row1 = r.removeFromTop (205);
-    panels[0]->setBounds (row1.removeFromLeft (r.getWidth() * 62 / 100).reduced (4));
-    panels[1]->setBounds (row1.reduced (4));
-    auto row2 = r.removeFromTop (205);
-    panels[2]->setBounds (row2.removeFromLeft (r.getWidth() / 2).reduced (4));
-    panels[3]->setBounds (row2.reduced (4));
-    auto row3 = r.removeFromTop (205);
-    panels[4]->setBounds (row3.removeFromLeft (r.getWidth() / 2).reduced (4));
-    panels[5]->setBounds (row3.reduced (4));
-    panels[6]->setBounds (r.reduced (4));
+    auto head = juce::Rectangle<int> (0, 0, kDesignW, 56).reduced (16, 12);
+    head.removeFromLeft (250);
+    presetBar.setBounds (head.removeFromLeft (380));
+    head.removeFromLeft (12);
+    randomButton.setBounds (head.removeFromLeft (100));
+    head.removeFromLeft (4);
+    lockButton.setBounds (head.removeFromLeft (64));
+    clearButton.setBounds (head.removeFromRight (110));
+    head.removeFromRight (8);
+    freezeButton.setBounds (head.removeFromRight (90));
+    head.removeFromRight (8);
+    qualityBox.setBounds (head.removeFromRight (90));
+
+    tailView.setBounds (12, 64, 820, 300);
+    decayView.setBounds (844, 64, 424, 180);
+    stereoMeter.setBounds (844, 252, 424, 112);
+
+    modeSel.setBounds (22, 396, 222, 32);
+    colorSel.setBounds (22, 456, 222, 26);
+    preSync.setBounds (22, 504, 70, 26);
+    preNote.setBounds (100, 504, 144, 26);
+    const int x0 = 256, w = (1260 - x0) / (int) coreKnobs.size();
+    for (size_t k = 0; k < coreKnobs.size(); ++k)
+        coreKnobs[k]->setBounds (x0 + (int) k * w, 384, w, 140);
+
+    tabs.setBounds (12, 544, 860, 28);
+    auto pageArea = juce::Rectangle<int> (16, 584, 1248, 222);
+    for (auto& pg : pages)
+        pg->setBounds (pageArea);
+    if (currentPage == 4)
+    {
+        pages[4]->setBounds (pageArea.withWidth (900));
+        duckDisplay.setBounds (pageArea.withTrimmedLeft (910).reduced (4, 8));
+    }
+    if (currentPage == 5)
+    {
+        pages[5]->setBounds (pageArea.withHeight (120));
+        storeA.setBounds (28, 740, 100, 30);
+        storeB.setBounds (136, 740, 100, 30);
+    }
+    for (auto& pg : pages)
+        if (auto* pp = dynamic_cast<ParamPanel*> (pg.get())) pp->drawFrame = false;
 }
 } // namespace schimmer

@@ -83,8 +83,9 @@ void Engine::process (float* L, float* R, int numSamples, const Settings& settin
 {
     // A mode switch changes the whole structure: fade the wet signal out, clear,
     // continue with the new mode (like Clear Tail, but the delay keeps running).
-    if (activeMode < 0) activeMode = settingsIn.mode;
-    if (settingsIn.mode != activeMode && clearState == ClearState::Idle)
+    // (The same for the diffusion stage count of the quality setting.)
+    if (activeMode < 0) { activeMode = settingsIn.mode; activeQuality = settingsIn.quality; }
+    if ((settingsIn.mode != activeMode || settingsIn.quality != activeQuality) && clearState == ClearState::Idle)
     {
         clearState = ClearState::Fading;
         clearDelayPending = false;
@@ -92,6 +93,7 @@ void Engine::process (float* L, float* R, int numSamples, const Settings& settin
     }
     Settings s = settingsIn;
     s.mode = activeMode;
+    s.quality = activeQuality;
 
     // rising edge of the clear trigger
     if (s.clearTrigger && ! lastClearTrigger && clearState == ClearState::Idle)
@@ -104,6 +106,7 @@ void Engine::process (float* L, float* R, int numSamples, const Settings& settin
     // Parameters are updated on a fixed grid of kChunk samples (absolute time),
     // independent of the host block size: any block size gives the same output.
     pendingMode = settingsIn.mode;
+    pendingQuality = settingsIn.quality;
     int done = 0;
     while (done < numSamples)
     {
@@ -184,7 +187,8 @@ void Engine::updateChunkParams (const Settings& s, int n) noexcept
     // ---- components
     const float scale = sizeToScale (s.size);
     Diffuser::Params dp;
-    dp.numStages = cfg.diffStages;
+    // Ultra: one more diffusion stage (smoother onset); Eco: one fewer (and 8 tank lines)
+    dp.numStages = std::clamp (cfg.diffStages + (s.quality == Quality::Ultra ? 1 : s.quality == Quality::Eco ? -1 : 0), 3, Diffuser::kMaxStages);
     dp.rangeMs = cfg.diffRangeMs * scale;
     dp.g = 0.72f * smoothstep ((s.diffusion - 0.3f) / 0.7f);
     dp.phi = cfg.monoIn ? 0.7853982f : 0.7853982f * (1.0f - cfg.stereoSpread);
@@ -468,6 +472,7 @@ void Engine::processChunk (float* L, float* R, int n, const Settings& s, const f
                 {
                     modeSwitchPending = false;
                     activeMode = pendingMode;
+                    activeQuality = pendingQuality;
                 }
             }
         }

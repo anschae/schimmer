@@ -44,7 +44,7 @@ const std::vector<ParamInfo>& table()
           "Bright: full bandwidth, hi-fi. Dark: late-70s/early-80s digital reverb (steep roll-off above 10 kHz, grainier modulation).", true, true, 1 },
         { "warmth", "Warmth", U::Percent, 0, 100, 0, 0, kNone, "Gentle saturation inside the loop; rounds off loud tails.", true, true, 1 },
         { "quality", "Quality", U::Choice, 0, 2, 1, 0, { "Eco", "High", "Ultra" },
-          "Eco: 8 delay lines (half the CPU). High: 16 lines. Ultra: 16 lines with the finest interpolation everywhere.", false, false, 5 },
+          "Eco: 8 delay lines, lighter diffusion (about half the CPU). High: 16 lines. Ultra: 16 lines plus an extra diffusion stage for the smoothest onset.", false, false, 5 },
         // ---------------------------------------------------------------- input / output (5)
         { "inHP", "Input Low Cut", U::Hz, 10, 1000, 10, 100, kNone, "High-pass on the signal going into the reverb (10 Hz = off).", true, true, 5 },
         { "inLP", "Input High Cut", U::Hz, 1000, 20000, 20000, 6000, kNone, "Low-pass on the signal going into the reverb (20 kHz = off).", true, true, 5 },

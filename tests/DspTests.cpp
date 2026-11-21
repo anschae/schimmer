@@ -354,3 +354,25 @@ TEST_CASE ("10 minutes of freeze and extreme settings", "[.long]")
     }
     SECTION ("extreme shimmer") { stabilityRun (extremeSettings (1), 600.0); }
 }
+
+#include "dsp/ReverbModel.h"
+
+TEST_CASE ("The decay display model matches the measured decay per band", "[dsp][model]")
+{
+    const int variant = GENERATE (0, 1, 2);
+    auto s = wetSettings (variant == 2 ? 0 : 2, 5.0f);
+    if (variant == 0) { s.lowMult = 1.8f; s.highMult = 0.45f; }
+    if (variant == 1) { s.lowCutHz = 250.0f; s.highCutHz = 4000.0f; }
+    if (variant == 2) { s.dark = true; s.highMult = 0.7f; }
+    const auto m = impulseResponse (s, 12.0).mono();
+    // (band-pass measurements smear steep slopes: variant 1 is checked away from the cut-offs)
+    const std::vector<double> freqs = variant == 1 ? std::vector<double> { 600.0, 1000.0, 2000.0 } : std::vector<double> { 125.0, 1000.0, 4000.0 };
+    for (double f : freqs)
+    {
+        const double measured = bandT60 (m, kFs, f, 20.0);
+        const double predicted = dsp::model::t60At (s, f, kFs);
+        INFO ("variant " << variant << " " << f << " Hz: measured " << measured << " s, model " << predicted << " s");
+        CHECK (measured > predicted * 0.75);
+        CHECK (measured < predicted * 1.3);
+    }
+}

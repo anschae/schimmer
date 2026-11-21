@@ -320,6 +320,7 @@ juce::ValueTree SchimmerProcessor::captureState()
     juce::ValueTree root ("SchimmerState");
     root.setProperty ("stateVersion", kStateVersion, nullptr);
     root.setProperty ("presetName", currentPresetName, nullptr);
+    root.setProperty ("randomLocks", (int) randomLocks, nullptr);
     root.appendChild (apvts.copyState(), nullptr);
     juce::ValueTree morph ("MORPH");
     for (int ab = 0; ab < 2; ++ab)
@@ -350,6 +351,8 @@ void SchimmerProcessor::restoreState (const juce::ValueTree& state)
     }
     if (state.hasProperty ("presetName"))
         currentPresetName = state.getProperty ("presetName").toString();
+    if (state.hasProperty ("randomLocks"))
+        randomLocks = (uint32_t) (int) state.getProperty ("randomLocks");
     const auto morph = state.getChildWithName ("MORPH");
     for (int ab = 0; ab < 2; ++ab)
     {

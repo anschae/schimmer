@@ -135,6 +135,6 @@ collects `Schimmer-macOS.zip` / `Schimmer-Windows.zip`; on `v*` tags attaches th
 - UI is a placeholder (all controls in a grid); visualisations missing.
 - Randomize not implemented yet.
 - Not yet tested by a person in Cubase / Logic.
-- Quality "Ultra" currently behaves like "High".
+- Quality: Eco = 8 tank lines and one diffusion stage less, Ultra = one diffusion stage more (all modes).
 - Chamber mode has lower modal density (allowed +1 dB more spectral ripple in the test), like
   ValhallaShimmer's Small mode.
