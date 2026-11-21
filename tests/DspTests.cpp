@@ -433,3 +433,33 @@ TEST_CASE ("Bloom swells the tail in over roughly the Bloom time", "[dsp][bloom]
     INFO ("model peak at " << mAt << " s");
     CHECK (std::abs (mAt - peakT) < bloom * 0.6);
 }
+
+#include <chrono>
+
+TEST_CASE ("CPU load (informational)", "[.perf]")
+{
+    struct Case { const char* name; dsp::Settings s; dsp::Quality q; };
+    std::vector<Case> cases;
+    auto base = wetSettings (1, 8.0f);
+    cases.push_back ({ "High, plain", base, dsp::Quality::High });
+    cases.push_back ({ "Eco, plain", base, dsp::Quality::Eco });
+    auto shim = base;
+    shim.shimmer.mode = dsp::ShimmerMode::Single;
+    shim.shimmer.amount = 0.7f;
+    cases.push_back ({ "High, shimmer 70 %", shim, dsp::Quality::High });
+    auto all = shim;
+    all.grains.on = true;
+    all.grains.density = 30.0f;
+    all.echo.on = true;
+    all.bloomSec = 2.0f;
+    all.duck.on = true;
+    cases.push_back ({ "High, everything on", all, dsp::Quality::High });
+    const auto in = signals::padChord (kFs, 20.0, 15.0);
+    for (auto& c : cases)
+    {
+        const auto t0 = std::chrono::steady_clock::now();
+        renderEngine (c.s, in, kFs, 256, c.q);
+        const double sec = std::chrono::duration<double> (std::chrono::steady_clock::now() - t0).count();
+        WARN (c.name << ": " << 100.0 * sec / 20.0 << " % of one core at 48 kHz");
+    }
+}

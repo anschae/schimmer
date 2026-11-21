@@ -31,7 +31,10 @@ in German; code, comments, docs and commit messages are in English.
 - M8 UI: done (header with presets/randomize/locks/quality/freeze/clear, Tail View, decay curve,
   stereo/band meters, core row, six tab pages incl. ducking display and morph).
 - M9 presets (25 factory presets), mix lock, morph, randomize with section locks: done.
-- M10 polish: to do.
+- M10 polish: docs, parity checklist, CI green on all platforms. CPU (`SchimmerTests "[.perf]"`,
+  cloud Xeon 2.1 GHz, 48 kHz): ~8-12 % of one core for High, a bit more with shimmer; expect about
+  a third of that on Apple Silicon. The diffuser (6 stages x 8 modulated reads) and memory traffic
+  dominate; Eco saves less than expected.
 
 ## Build / test (Linux)
 ```sh

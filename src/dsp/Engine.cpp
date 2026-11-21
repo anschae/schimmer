@@ -194,7 +194,7 @@ void Engine::updateChunkParams (const Settings& s, int n) noexcept
     dp.g = 0.72f * smoothstep ((s.diffusion - 0.3f) / 0.7f);
     dp.phi = cfg.monoIn ? 0.7853982f : 0.7853982f * (1.0f - cfg.stereoSpread);
     dp.modMs = 0.12f + 0.15f * s.modDepth;
-    dp.hermite = ! s.dark;
+    dp.hermite = ! s.dark || s.quality == Quality::Ultra;
     diffuser.setParams (dp, n);
 
     bloom.setParams (s.bloomSec, scale, s.freeze, n);
@@ -384,12 +384,9 @@ void Engine::processChunk (float* L, float* R, int n, const Settings& s, const f
         for (int c = 0; c < 8; ++c) d8[c] = x8[c] + dm * (d8[c] - x8[c]);
 
         // early (diffuser) output: orthogonal taps, own side weighted
-        float earlyL = 0.0f, earlyR = 0.0f;
-        for (int c = 0; c < 4; ++c)
-        {
-            earlyL += hadamardSign (1, c) * d8[c] + 0.35f * hadamardSign (2, c) * d8[c + 4];
-            earlyR += hadamardSign (1, c) * d8[c + 4] + 0.35f * hadamardSign (2, c) * d8[c];
-        }
+        // rows 1 and 2 of the 4-point Hadamard: (+,-,+,-) and (+,+,-,-)
+        const float earlyL = (d8[0] - d8[1] + d8[2] - d8[3]) + 0.35f * (d8[4] + d8[5] - d8[6] - d8[7]);
+        const float earlyR = (d8[4] - d8[5] + d8[6] - d8[7]) + 0.35f * (d8[0] + d8[1] - d8[2] - d8[3]);
 
         // ---- bloom
         if (bloomActive) bloom.processSample (d8);
