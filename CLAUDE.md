@@ -121,7 +121,8 @@ Tank details:
 - Mode switch (and quality change): fade 5 ms → clear reverb buffers → new mode (delay keeps running).
 - Bloom: three cascaded energy-normalised 8-line stages (τ = bloom/2.2 each) → gamma-shaped
   release, peak ≈ Bloom time; early output fades out with Bloom.
-- Shimmer amount: shifted fraction per pass = amount²; GrainShifter has an energy-matching AGC
+- Shimmer amount: shifted fraction per pass = amount²; anti-alias: 8th-order Butterworth at
+  0.36·fs/ratio before upward shifts (test "does not alias"); GrainShifter has an energy-matching AGC
   (120 ms RMS in vs out, gain 0.35..1.8) so the decay time is independent of pitch/smoothness;
   the shifted path never goes below 30 Hz.
 - Clear Tail: rising edge → 5 ms fade → O(1) buffer clear (`RingBuffer::clearFromNow`) → full gain.

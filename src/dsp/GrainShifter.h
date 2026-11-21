@@ -85,17 +85,21 @@ public:
         aa.reset();
     }
 
-    /** Anti-alias filter cutoff for upward shifts (set per chunk). */
+    /** Anti-alias filter for upward shifts (set per chunk): 8th-order Butterworth
+        well below fs / (2 ratio), so octaves up never fold back (test "does not alias"). */
     void setAntiAlias (float ratio) noexcept
     {
-        const float fc = std::min (0.45f * fs, 0.40f * fs / std::max (1.0f, ratio));
         aaOn = ratio > 1.001f;
-        aa.set (fc, 0.7071f, fs);
+        if (aaOn && std::abs (ratio - aaRatio) > 1.0e-4f)
+        {
+            aa.set (std::min (0.45f * fs, 0.36f * fs / ratio), fs);
+            aaRatio = ratio;
+        }
     }
 
     inline void push (float x) noexcept
     {
-        const float y = aaOn ? aa.lowpass (x) : x;
+        const float y = aaOn ? aa.process (x) : x;
         eIn += agcCoef * (y * y - eIn);
         buf.write (y);
     }
@@ -176,8 +180,9 @@ private:
 
     float fs = 48000.0f;
     RingBuffer buf;
-    Svf aa;
+    Butter8 aa;
     bool aaOn = false;
+    float aaRatio = -1.0f;
     Grain grains[kGrains];
     Rng rng;
     float norm = 0.8165f;

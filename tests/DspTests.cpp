@@ -463,3 +463,28 @@ TEST_CASE ("CPU load (informational)", "[.perf]")
         WARN (c.name << ": " << 100.0 * sec / 20.0 << " % of one core at 48 kHz");
     }
 }
+
+TEST_CASE ("Shimmer does not alias when shifting up", "[dsp][shimmer]")
+{
+    auto s = wetSettings (2, 6.0f);
+    s.shimmer.mode = dsp::ShimmerMode::Single;
+    s.shimmer.semis = 12.0f;
+    s.shimmer.amount = 1.0f;
+    s.shimmer.smooth = 1.0f;
+    s.shimmer.highCutHz = 20000.0f;
+    s.highCutHz = 20000.0f;
+    s.highMult = 1.0f;
+    auto in = sine (kFs, 4.0, 7000.0, 0.3f);
+    const auto m = renderEngine (s, in, kFs).mono();
+    const Vec seg (m.begin() + (long) kFs, m.begin() + (long) (4.0 * kFs));
+    const auto p = welch (seg, 8192);
+    const double df = kFs / 8192.0;
+    auto band = [&] (double f0, double f1) {
+        double e = 0;
+        for (size_t i = (size_t) (f0 / df); i <= (size_t) (f1 / df) && i < p.size(); ++i) e += p[i];
+        return 10.0 * std::log10 (e + 1.0e-30);
+    };
+    const double octave = band (13500.0, 14500.0), alias = band (19500.0, 20500.0);
+    INFO ("14 kHz (octave) " << octave << " dB, 20 kHz (alias of 28 kHz) " << alias << " dB");
+    CHECK (alias < octave - 40.0);
+}
