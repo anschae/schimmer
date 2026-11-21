@@ -140,7 +140,7 @@ void Tank::setParams (const TankParams& p, int n) noexcept
 
     // shimmer assignment
     const auto& sh = p.shimmer;
-    const bool shimOn = sh.mode != ShimmerMode::Bypass && sh.amount > 0.0005f;
+    const bool shimOn = sh.mode != ShimmerMode::Bypass && sh.amount > 0.01f;
     const float grainSec = lerp (0.035f, 0.11f, sh.smooth);
     const float jitter = 1.0f - sh.smooth;
     const bool rev = sh.mode == ShimmerMode::SingleReverse || sh.mode == ShimmerMode::DualReverse;
@@ -148,7 +148,8 @@ void Tank::setParams (const TankParams& p, int n) noexcept
     for (int k = 0; k < N; ++k)
     {
         const int i = shimmerOrder[k];
-        const float f = shimOn ? clampf (sh.amount * (float) N - (float) k, 0.0f, 1.0f) : 0.0f;
+        // perceptual taper: the shifted fraction per pass is amount^2 (100 % = everything, like ValhallaShimmer)
+        const float f = shimOn ? clampf (sh.amount * sh.amount * (float) N - (float) k, 0.0f, 1.0f) : 0.0f;
         shimTarget[i] = f;
         float semis = sh.semis;
         switch (sh.mode)

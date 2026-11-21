@@ -58,6 +58,8 @@ public:
     {
         fs = sampleRate;
         buf.allocate ((int) std::ceil (kMaxBufferSec * fs) + 16);
+        agcCoef = 1.0f - std::exp (-1.0f / (0.12f * fs));
+        agcSmooth = 1.0f - std::exp (-1.0f / (0.05f * fs));
         rng = Rng (seed);
         reset();
     }
@@ -73,6 +75,8 @@ public:
             grains[k].inc = 0.0f;   // started lazily
         }
         started = false;
+        eIn = eOut = 0.0f;
+        agc = 1.0f;
     }
 
     void clear() noexcept
@@ -89,7 +93,12 @@ public:
         aa.set (fc, 0.7071f, fs);
     }
 
-    inline void push (float x) noexcept { buf.write (aaOn ? aa.lowpass (x) : x); }
+    inline void push (float x) noexcept
+    {
+        const float y = aaOn ? aa.lowpass (x) : x;
+        eIn += agcCoef * (y * y - eIn);
+        buf.write (y);
+    }
 
     /** Output for the current sample (call after push()). */
     inline float process (const ShiftVoice& v) noexcept
@@ -117,7 +126,18 @@ public:
             if (g.phase >= 1.0f)
                 startGrain (g, v);
         }
-        return sum * norm;
+        // Energy-preserving AGC: overlap-add gain depends on how coherent the
+        // grains are (pitch, jitter, material). Matching the slow RMS of output
+        // and input keeps the shifter energy-neutral, so the reverb decay time
+        // stays right whatever the shimmer settings.
+        sum *= norm;
+        eOut += agcCoef * (sum * sum - eOut);
+        if (eOut > 1.0e-12f && eIn > 1.0e-12f)
+        {
+            const float target = clampf (std::sqrt (eIn / eOut), 0.35f, 1.8f);
+            agc += agcSmooth * (target - agc);
+        }
+        return sum * agc;
     }
 
 private:
@@ -162,5 +182,6 @@ private:
     Rng rng;
     float norm = 0.8165f;
     bool started = false;
+    float eIn = 0.0f, eOut = 0.0f, agc = 1.0f, agcCoef = 0.001f, agcSmooth = 0.001f;
 };
 } // namespace schimmer::dsp

@@ -13,6 +13,7 @@
 namespace schimmer::analysis
 {
 using Vec = std::vector<float>;
+inline constexpr double kPiD = 3.14159265358979323846;
 
 struct Render
 {
@@ -63,14 +64,14 @@ struct Biquad
     double b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0, z1 = 0, z2 = 0;
     static Biquad bandpass (double fc, double q, double fs)
     {
-        const double w = 2.0 * M_PI * fc / fs, al = std::sin (w) / (2.0 * q), a0 = 1.0 + al;
+        const double w = 2.0 * kPiD * fc / fs, al = std::sin (w) / (2.0 * q), a0 = 1.0 + al;
         Biquad b;
         b.b0 = al / a0; b.b1 = 0; b.b2 = -al / a0; b.a1 = -2.0 * std::cos (w) / a0; b.a2 = (1.0 - al) / a0;
         return b;
     }
     static Biquad highpass (double fc, double q, double fs)
     {
-        const double w = 2.0 * M_PI * fc / fs, al = std::sin (w) / (2.0 * q), c = std::cos (w), a0 = 1.0 + al;
+        const double w = 2.0 * kPiD * fc / fs, al = std::sin (w) / (2.0 * q), c = std::cos (w), a0 = 1.0 + al;
         Biquad b;
         b.b0 = (1 + c) / 2 / a0; b.b1 = -(1 + c) / a0; b.b2 = (1 + c) / 2 / a0; b.a1 = -2 * c / a0; b.a2 = (1 - al) / a0;
         return b;
@@ -178,7 +179,7 @@ inline void fft (std::vector<std::complex<double>>& a)
     }
     for (size_t len = 2; len <= n; len <<= 1)
     {
-        const double ang = -2.0 * M_PI / (double) len;
+        const double ang = -2.0 * kPiD / (double) len;
         const std::complex<double> wl (std::cos (ang), std::sin (ang));
         for (size_t i = 0; i < n; i += len)
         {
@@ -199,7 +200,7 @@ inline std::vector<double> welch (const Vec& x, size_t nfft)
 {
     std::vector<double> p (nfft / 2, 0.0);
     std::vector<double> w (nfft);
-    for (size_t i = 0; i < nfft; ++i) w[i] = 0.5 - 0.5 * std::cos (2.0 * M_PI * (double) i / (double) (nfft - 1));
+    for (size_t i = 0; i < nfft; ++i) w[i] = 0.5 - 0.5 * std::cos (2.0 * kPiD * (double) i / (double) (nfft - 1));
     int segs = 0;
     std::vector<std::complex<double>> a (nfft);
     for (size_t s = 0; s + nfft <= x.size(); s += nfft / 2)
@@ -269,8 +270,8 @@ inline double noiseReferenceExcess (size_t len, double fs)
         const double u1 = std::max (1.0e-12, (double) (signals::xs (s) >> 8) / 16777216.0);
         const double u2 = (double) (signals::xs (s) >> 8) / 16777216.0;
         const double r = std::sqrt (-2.0 * std::log (u1));
-        n[i] = (float) (r * std::cos (2.0 * M_PI * u2));
-        if (i + 1 < len) n[i + 1] = (float) (r * std::sin (2.0 * M_PI * u2));
+        n[i] = (float) (r * std::cos (2.0 * kPiD * u2));
+        if (i + 1 < len) n[i + 1] = (float) (r * std::sin (2.0 * kPiD * u2));
     }
     return maxSpectralExcess (n, fs);
 }
@@ -357,7 +358,7 @@ inline signals::Stereo sine (double fs, double seconds, double hz, float amp = 0
     signals::Stereo s;
     s.resize ((size_t) (fs * seconds));
     for (size_t i = 0; i < s.size(); ++i)
-        s.l[i] = s.r[i] = amp * (float) std::sin (2.0 * M_PI * hz * (double) i / fs);
+        s.l[i] = s.r[i] = amp * (float) std::sin (2.0 * kPiD * hz * (double) i / fs);
     return s;
 }
 } // namespace schimmer::analysis

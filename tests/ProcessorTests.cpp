@@ -257,3 +257,24 @@ TEST_CASE ("Clear Tail parameter triggers on the rising edge only", "[clear]")
     block();
     CHECK (p.getEngine().clearCount.load() == 2);
 }
+
+#include "model/Randomizer.h"
+
+TEST_CASE ("Randomize respects locks and sensible ranges", "[randomize]")
+{
+    SchimmerProcessor p;
+    juce::Random rng (11);
+    const float mixBefore = p.value (P::mix);
+    const uint32_t lockDelay = 1u << 4;
+    const float delayFbBefore = p.value (P::delayFeedback);
+    for (int round = 0; round < 50; ++round)
+    {
+        Randomizer::randomize (p, lockDelay, rng);
+        CHECK (p.value (P::mix) == mixBefore);                 // never randomized
+        CHECK (p.value (P::delayFeedback) == delayFbBefore);   // locked section
+        CHECK (p.value (P::decay) >= 2.4f);
+        CHECK (p.value (P::decay) <= 40.5f);
+        CHECK (p.value (P::diffusion) >= 54.0f);
+        CHECK (p.value (P::freeze) < 0.5f);
+    }
+}

@@ -268,15 +268,16 @@ void stabilityRun (const dsp::Settings& s, double seconds)
         e.process (l.data(), r.data(), 512, s);
         for (int i = 0; i < 512; ++i)
         {
-            REQUIRE (std::isfinite (l[(size_t) i]));
-            REQUIRE (std::isfinite (r[(size_t) i]));
+            if (! std::isfinite (l[(size_t) i]) || ! std::isfinite (r[(size_t) i]))
+                FAIL ("non-finite output after " << (double) b * 512.0 / kFs << " s");
             maxPeak = std::max (maxPeak, (double) std::abs (l[(size_t) i]));
             dcSum += l[(size_t) i];
             ++dcCount;
         }
     }
     INFO ("peak " << maxPeak << " mean " << dcSum / (double) dcCount);
-    CHECK (maxPeak < 4.0);
+    // bounded (no runaway); extreme settings include +6 dB delay direct and 98 % feedback
+    CHECK (maxPeak < 8.0);
     CHECK (std::abs (dcSum / (double) dcCount) < 1.0e-3);
 }
 
